@@ -1,0 +1,16 @@
+Parsed a function definition
+(Function: foo
+(Args: a b)
+(ArgTypes: 2 1)
+(FnType: 1))
+{
+Declaration type 1 ( c );
+Assignment: b = ((Val: b)*(Double Val: 2.1));
+Assignment: c = ((Val: a)+(Val: b));
+Return: (Val: c);
+}
+Parsed an extern
+(Function: bar
+(Args: a b)
+(ArgTypes: 1 2)
+(FnType: 2))

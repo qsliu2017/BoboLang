@@ -1,7 +1,7 @@
 #include "Lex.h"
 #include "Parse.h"
 
-static std::unique_ptr<ExprAST> LogError(const char *Str)
+static std::unique_ptr<ExprAST> LogErrorE(const char *Str)
 {
   fprintf(stderr, "Error: %s\n", Str);
   return nullptr;
@@ -9,19 +9,19 @@ static std::unique_ptr<ExprAST> LogError(const char *Str)
 
 static std::unique_ptr<StmtAST> LogErrorS(const char *Str)
 {
-  LogError(Str);
+  LogErrorE(Str);
   return nullptr;
 }
 
 static std::unique_ptr<PrototypeAST> LogErrorP(const char *Str)
 {
-  LogError(Str);
+  LogErrorE(Str);
   return nullptr;
 }
 
 static std::unique_ptr<FunctionAST> LogErrorF(const char *Str)
 {
-  LogError(Str);
+  LogErrorE(Str);
   return nullptr;
 }
 
@@ -237,7 +237,7 @@ std::unique_ptr<ExprAST> ParseFactor()
       return nullptr;
 
     if (CurTok != ')')
-      return LogError("Expected ')'");
+      return LogErrorE("Expected ')'");
     getNextToken(); // eat ')'
 
     return Expr;
@@ -249,7 +249,7 @@ std::unique_ptr<ExprAST> ParseFactor()
   else if (CurTok == tok_number_double)
     return ParseNumberExpr(type_double);
   else
-    return LogError("Expected a factor");
+    return LogErrorE("Expected a factor");
 }
 
 std::unique_ptr<ExprAST> ParseNumberExpr(int NumberType)
@@ -265,7 +265,7 @@ std::unique_ptr<ExprAST> ParseNumberExpr(int NumberType)
   }
   else
   {
-    return LogError("Unknown number type");
+    return LogErrorE("Unknown number type");
   }
   getNextToken(); // eat number
   return std::move(NumExpr);
@@ -298,7 +298,7 @@ std::unique_ptr<ExprAST> ParseIdentifierExpr()
   }
 
   if (CurTok != ')')
-    return LogError("Expected ')' in callee");
+    return LogErrorE("Expected ')' in callee");
 ParseIdentifierExpr_NoArg:
   getNextToken(); // eat ')'
 

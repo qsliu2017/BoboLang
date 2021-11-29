@@ -19,7 +19,7 @@ public:
 
 class NumberDoubleExprAST : public ExprAST
 {
-  const double Val;
+  double Val;
 
 public:
   NumberDoubleExprAST(double Val) : Val(Val) {}
@@ -36,7 +36,7 @@ public:
 
 class NumberIntExprAST : public ExprAST
 {
-  const int Val;
+  int Val;
 
 public:
   NumberIntExprAST(int Val) : Val(Val) {}
@@ -53,7 +53,7 @@ public:
 
 class VariableExprAST : public ExprAST
 {
-  const std::string Name;
+  std::string Name;
 
 public:
   VariableExprAST(const std::string &Name) : Name(Name) {}
@@ -95,8 +95,8 @@ public:
 
 class CallExprAST : public ExprAST
 {
-  const std::string Callee;
-  const std::vector<std::unique_ptr<ExprAST>> Args;
+  std::string Callee;
+  std::vector<std::unique_ptr<ExprAST>> Args;
 
 public:
   CallExprAST(const std::string &Callee,
@@ -130,8 +130,8 @@ public:
 
 class DeclStmtAST : public StmtAST
 {
-  const int ValType;
-  const std::vector<std::string> Names;
+  int ValType;
+  std::vector<std::string> Names;
 
 public:
   DeclStmtAST(int ValType, std::vector<std::string> Names)
@@ -152,8 +152,8 @@ public:
 
 class SimpStmtAST : public StmtAST
 {
-  const std::string Name;
-  const std::unique_ptr<ExprAST> Expr;
+  std::string Name;
+  std::unique_ptr<ExprAST> Expr;
 
 public:
   SimpStmtAST(const std::string &Name, std::unique_ptr<ExprAST> Expr)
@@ -193,10 +193,10 @@ public:
 
 class PrototypeAST
 {
-  const std::string Name;
-  const std::vector<std::string> Args;
-  const std::vector<int> ArgTypes;
-  const int FnType;
+  std::string Name;
+  std::vector<std::string> Args;
+  std::vector<int> ArgTypes;
+  int FnType;
 
 public:
   PrototypeAST(const std::string &Name,
@@ -236,8 +236,8 @@ public:
 
 class FunctionAST
 {
-  const std::unique_ptr<PrototypeAST> Proto;
-  const std::vector<std::unique_ptr<StmtAST>> Body;
+  std::unique_ptr<PrototypeAST> Proto;
+  std::vector<std::unique_ptr<StmtAST>> Body;
 
 public:
   FunctionAST(std::unique_ptr<PrototypeAST> Proto,

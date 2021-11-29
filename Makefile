@@ -8,13 +8,19 @@ Lex.o: Lex.cc Lex.h
 Parse.o: Parse.cc Parse.h AST.h Lex.o
 	$(CC) $(FLAG) -c -o Parse.o Parse.cc Lex.o
 
+Codegen.o : Codegen.cc Codegen.h Parse.o
+	$(CC) $(FLAG) -c -o Codegen.o Codegen.cc Parse.o
+
 Lex_test.o: test/Lex_test.cc Lex.o
 	$(CC) $(FLAG) -o Lex_test.o test/Lex_test.cc Lex.o
 
-Parse_test.o: test/Parse_test.cc Parse.o Lex.o
-	$(CC) $(FLAG) -o Parse_test.o Lex.o Parse.o test/Parse_test.cc
+Parse_test.o: test/Parse_test.cc Parse.o
+	$(CC) $(FLAG) -o Parse_test.o Parse.o Lex.o test/Parse_test.cc
 
-.PONNY: test_Lex
+Codegen_test.o : test/Codegen_test.cc Codegen.o
+	$(CC) $(FLAG) -o Codegen_test.o Codegen.o Parse.o Lex.o test/Codegen_test.cc
+
+.PONNY: test_Lex test_Parse test_Codegen
 
 test_Lex: Lex_test.o
 	@echo "Expect:"
@@ -27,3 +33,9 @@ test_Parse: Parse_test.o
 	@cat test/parse_output.data
 	@echo "Actual:"
 	@./Parse_test.o test/parse_input.data
+
+test_Codegen: Codegen_test.o
+	@echo "Expect:"
+	@cat test/codegen_output.data
+	@echo "Actual:"
+	@./Codegen_test.o test/codegen_input.data

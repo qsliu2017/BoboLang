@@ -2,7 +2,7 @@
 #define AST_H
 #include "llvm/IR/Value.h"
 #include <vector>
-
+#include <iostream>
 #define AST_OUTPUT
 
 using namespace llvm;
@@ -189,6 +189,65 @@ public:
     std::cout << "Return: ";
     Expr->output();
     std::cout << ";" << std::endl;
+  }
+#endif
+};
+
+class IfElseStmtAST : public StmtAST
+{
+  std::unique_ptr<ExprAST> Cond;
+  std::unique_ptr<StmtAST> Then;
+  std::unique_ptr<StmtAST> Else;
+
+public:
+  IfElseStmtAST(std::unique_ptr<ExprAST> Cond,
+                std::unique_ptr<StmtAST> Then,
+                std::unique_ptr<StmtAST> Else)
+      : Cond(std::move(Cond)), Then(std::move(Then)), Else(std::move(Else)) {}
+
+#ifdef AST_CODEGEN
+  Value *codegen() override;
+#endif
+#ifdef AST_OUTPUT
+  void output() override
+  {
+    std::cout << "If: ";
+    Cond->output();
+    std::cout << std::endl;
+
+    std::cout << "Then: ";
+    Then->output();
+
+    if (Else)
+    {
+      std::cout << "Else: ";
+      Else->output();
+    }
+  }
+#endif
+};
+
+class WhileStmtAST : public StmtAST
+{
+  std::unique_ptr<ExprAST> Cond;
+  std::unique_ptr<StmtAST> Loop;
+
+public:
+  WhileStmtAST(std::unique_ptr<ExprAST> Cond, std::unique_ptr<StmtAST> Loop)
+      : Cond(std::move(Cond)), Loop(std::move(Loop)) {}
+
+#ifdef AST_CODEGEN
+  Value *codegen() override;
+#endif
+#ifdef AST_OUTPUT
+  void output() override
+  {
+    std::cout << "While: ";
+    Cond->output();
+    std::cout << std::endl;
+
+    std::cout << "Do: ";
+    Loop->output();
   }
 #endif
 };

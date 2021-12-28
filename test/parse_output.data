@@ -5,6 +5,13 @@ Parsed a function definition
 (FnType: 1))
 {
 Declaration type 1 ( c );
+If: (Val: b)
+Then: Assignment: c = (Val: a);
+If: (Val: a)
+Then: Assignment: c = (Val: a);
+Else: Assignment: c = (Val: b);
+While: (Val: b)
+Do: Assignment: b = ((Val: b)-(Int Val: 1));
 Assignment: b = ((Val: b)*(Double Val: 2.1));
 Assignment: c = ((Val: a)+(Val: b));
 Return: (Val: c);

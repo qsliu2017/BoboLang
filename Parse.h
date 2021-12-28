@@ -10,6 +10,8 @@ std::unique_ptr<StmtAST> ParseStatement();
 std::unique_ptr<StmtAST> ParseVarDeclaration();
 std::unique_ptr<StmtAST> ParseSimpleAssignment();
 std::unique_ptr<StmtAST> ParseReturn();
+std::unique_ptr<StmtAST> ParseIfElse();
+std::unique_ptr<StmtAST> ParseWhile();
 
 std::unique_ptr<ExprAST> ParseExpression();
 std::unique_ptr<ExprAST> ParseValue();

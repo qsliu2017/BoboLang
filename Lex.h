@@ -12,6 +12,9 @@ enum Token
 	tok_number_int = -5,
 	tok_number_double = -6,
 	tok_return = -7,
+	tok_if = -8,
+	tok_else = -9,
+	tok_while = -10,
 };
 
 enum Types

@@ -1,5 +1,8 @@
 int foo(double a, int b){
        int c;
+       if(b)c=a;
+       if(a)c=a;else c=b;
+       while(b)b=b-1;
        b = b * 2.1;
        c = a + b;
        return c;

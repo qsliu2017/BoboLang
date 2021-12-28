@@ -169,6 +169,78 @@ Value *ReturnStmtAST::codegen()
   return Builder->CreateRet(RetVal);
 }
 
+Value *getBoolValue(Value *Val)
+{
+  auto Type = Val->getType();
+  if (Type->isDoubleTy())
+    return Builder->CreateCmp(CmpInst::Predicate::FCMP_ONE, Val, ConstantFP::get(Type, 0.0));
+  else if (Type->isIntegerTy())
+    return Builder->CreateCmp(CmpInst::Predicate::ICMP_NE, Val, ConstantInt::get(Type, 0));
+  return nullptr;
+}
+
+Value *IfElseStmtAST::codegen()
+{
+  Value *CondVal = Cond->codegen();
+  if (!CondVal)
+    return nullptr;
+  CondVal = getBoolValue(CondVal);
+
+  auto TheFunction = Builder->GetInsertBlock()->getParent();
+
+  auto ThenBB = BasicBlock::Create(*TheContext, "then", TheFunction),
+       ElseBB = BasicBlock::Create(*TheContext, "else", TheFunction),
+       MergeBB = BasicBlock::Create(*TheContext, "ifcont", TheFunction);
+
+  Builder->CreateCondBr(CondVal, ThenBB, ElseBB);
+
+  Builder->SetInsertPoint(ThenBB);
+  auto IfVal = Then->codegen();
+  if (!IfVal)
+    return nullptr;
+  Builder->CreateBr(MergeBB);
+  ThenBB = Builder->GetInsertBlock();
+
+  Builder->SetInsertPoint(ElseBB);
+  auto ElseVal = Else->codegen();
+  if (!ElseVal)
+    return nullptr;
+  Builder->CreateBr(MergeBB);
+  ElseBB = Builder->GetInsertBlock();
+
+  Builder->SetInsertPoint(MergeBB);
+  return MergeBB;
+}
+
+Value *WhileStmtAST::codegen()
+{
+  auto TheFunction = Builder->GetInsertBlock()->getParent();
+
+  auto CondBB = BasicBlock::Create(*TheContext, "while", TheFunction),
+       LoopBB = BasicBlock::Create(*TheContext, "loop", TheFunction),
+       ContBB = BasicBlock::Create(*TheContext, "cont", TheFunction);
+
+  Builder->CreateBr(CondBB);
+
+  Builder->SetInsertPoint(CondBB);
+  auto CondVal = Cond->codegen();
+  if (!CondVal)
+    return nullptr;
+  CondVal = getBoolValue(CondVal);
+  Builder->CreateCondBr(CondVal, LoopBB, ContBB);
+  CondBB = Builder->GetInsertBlock();
+
+  Builder->SetInsertPoint(LoopBB);
+  auto LoopVal = Loop->codegen();
+  if (!LoopVal)
+    return nullptr;
+  Builder->CreateBr(CondBB);
+  LoopBB = Builder->GetInsertBlock();
+
+  Builder->SetInsertPoint(ContBB);
+  return ContBB;
+}
+
 Function *PrototypeAST::codegen()
 {
   Type *ResultTy;

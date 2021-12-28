@@ -16,6 +16,9 @@ static std::map<std::string, Token> ReservedValues{
     {"double", tok_def},
     {"extern", tok_extern},
     {"return", tok_return},
+    {"if", tok_if},
+    {"else", tok_else},
+    {"while", tok_while},
 };
 
 int gettok()

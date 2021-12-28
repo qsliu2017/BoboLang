@@ -114,6 +114,17 @@ std::unique_ptr<StmtAST> ParseStatement()
     Stmt = ParseVarDeclaration();
   else if (CurTok == tok_return)
     Stmt = ParseReturn();
+  else if (CurTok == tok_if)
+  {
+    Stmt = ParseIfElse();
+    goto ParseStatement_NoSemicolon;
+  }
+  else if (CurTok == tok_while)
+  {
+    Stmt = ParseWhile();
+    goto ParseStatement_NoSemicolon;
+  }
+
   else
     return LogErrorS("Expected statement");
 
@@ -121,6 +132,7 @@ std::unique_ptr<StmtAST> ParseStatement()
     return LogErrorS("Expected ';' after statement");
   getNextToken(); // eat ';'
 
+ParseStatement_NoSemicolon:
   return std::move(Stmt);
 }
 
@@ -161,6 +173,52 @@ std::unique_ptr<StmtAST> ParseReturn()
     return nullptr;
 
   return std::make_unique<ReturnStmtAST>(std::move(Expr));
+}
+
+std::unique_ptr<StmtAST> ParseIfElse()
+{
+  if (getNextToken() != '(') // eat 'if'
+    return LogErrorS("Expect '(' before if condition");
+  getNextToken(); // eat '('
+
+  auto Cond = ParseExpression();
+  if (!Cond)
+    return nullptr;
+
+  if (CurTok != ')')
+    return LogErrorS("Expect ')' after if condition");
+  getNextToken(); // eat ')'
+
+  auto If = ParseStatement();
+  if (!If)
+    return nullptr;
+
+  if (CurTok != tok_else)
+    return std::make_unique<IfElseStmtAST>(std::move(Cond), std::move(If), nullptr);
+  getNextToken(); // eat 'else'
+
+  auto Else = ParseStatement();
+  return std::make_unique<IfElseStmtAST>(std::move(Cond), std::move(If), std::move(Else));
+}
+std::unique_ptr<StmtAST> ParseWhile()
+{
+  if (getNextToken() != '(') // eat 'while'
+    return LogErrorS("Expect '(' before while condition");
+  getNextToken(); // eat '('
+
+  auto Cond = ParseExpression();
+  if (!Cond)
+    return nullptr;
+
+  if (CurTok != ')')
+    return LogErrorS("Expect ')' after while condition");
+  getNextToken(); // eat ')'
+
+  auto Loop = ParseStatement();
+  if (!Loop)
+    return nullptr;
+
+  return std::make_unique<WhileStmtAST>(std::move(Cond), std::move(Loop));
 }
 
 std::unique_ptr<ExprAST> ParseExpression()

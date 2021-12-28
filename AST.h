@@ -3,6 +3,8 @@
 #include "llvm/IR/Value.h"
 #include <vector>
 
+#define AST_OUTPUT
+
 using namespace llvm;
 
 class ExprAST

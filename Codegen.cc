@@ -19,7 +19,6 @@ static Function *getFunction(std::string Name)
 
   return nullptr;
 }
-static Function *CurrentFunction;
 
 static Value *LogErrorV(const char *Str)
 {
@@ -156,7 +155,8 @@ Value *SimpStmtAST::codegen()
 Value *ReturnStmtAST::codegen()
 {
   Value *RetVal = Expr->codegen();
-  Type *RetProtoTy = CurrentFunction->getReturnType();
+  auto TheFunction = Builder->GetInsertBlock()->getParent();
+  Type *RetProtoTy = TheFunction->getReturnType();
   Type *RetValTy = RetVal->getType();
 
   bool isProtoDouble = RetProtoTy->isDoubleTy(),
@@ -277,16 +277,15 @@ Function *FunctionAST::codegen()
 {
   auto &P = *Proto;
   FunctionProtos[Proto->getName()] = std::move(Proto);
-  CurrentFunction = getFunction(P.getName());
-  if (!CurrentFunction)
-    return nullptr;
 
-  BasicBlock *BB = BasicBlock::Create(*TheContext, "entry", CurrentFunction);
+  auto TheFunction = getFunction(P.getName());
+
+  BasicBlock *BB = BasicBlock::Create(*TheContext, "entry", TheFunction);
   Builder->SetInsertPoint(BB);
 
   NamedValues.clear();
 
-  for (auto &Arg : CurrentFunction->args())
+  for (auto &Arg : TheFunction->args())
   {
     Value *Ptr = NamedValues[std::string(Arg.getName())] = Builder->CreateAlloca(Arg.getType(), 0, Arg.getName());
     Builder->CreateStore(&Arg, Ptr);
@@ -296,14 +295,11 @@ Function *FunctionAST::codegen()
   {
     if (!Stmt->codegen())
     {
-      CurrentFunction->eraseFromParent();
-      CurrentFunction = nullptr;
+      TheFunction->eraseFromParent();
       return nullptr;
     }
   }
 
-  verifyFunction(*CurrentFunction);
-  Function *TheFunction = CurrentFunction;
-  CurrentFunction = nullptr;
+  verifyFunction(*TheFunction);
   return TheFunction;
 }

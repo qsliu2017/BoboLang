@@ -45,17 +45,7 @@ std::unique_ptr<FunctionAST> ParseFunctionDefinition()
     return nullptr;
   if (CurTok != '{')
     return LogErrorF("Expected '{' in function");
-  getNextToken(); // eat '{'
-
-  std::vector<std::unique_ptr<StmtAST>> Body;
-  while (CurTok != '}')
-  {
-    auto Stmt = ParseStatement();
-    if (!Stmt)
-      return nullptr;
-    Body.push_back(std::move(Stmt));
-  }
-  getNextToken(); // eat '}'
+  auto Body = ParseBlock();
   return std::make_unique<FunctionAST>(std::move(Proto), std::move(Body));
 }
 
@@ -103,6 +93,33 @@ ParsePrototype_NoArg:
   getNextToken(); // eat ')'.
 
   return std::make_unique<PrototypeAST>(FnName, std::move(ArgNames), std::move(ArgTypes), FnType);
+}
+
+std::unique_ptr<BlockAST> ParseBlock()
+{
+  getNextToken(); // eat '{'
+
+  std::vector<std::unique_ptr<StmtAST>> Stmts;
+  while (CurTok != '}')
+  {
+    if (CurTok == '{')
+    {
+      if (auto Block = ParseBlock())
+        Stmts.push_back(std::move(Block));
+      else
+        return nullptr;
+    }
+    else
+    {
+      if (auto Stmt = ParseStatement())
+        Stmts.push_back(std::move(Stmt));
+      else
+        return nullptr;
+    }
+  }
+  getNextToken(); // eat '}'
+
+  return std::make_unique<BlockAST>(std::move(Stmts));
 }
 
 std::unique_ptr<StmtAST> ParseStatement()
@@ -187,19 +204,25 @@ std::unique_ptr<StmtAST> ParseIfElse()
 
   if (CurTok != ')')
     return LogErrorS("Expect ')' after if condition");
-  getNextToken(); // eat ')'
 
-  auto If = ParseStatement();
-  if (!If)
+  if (getNextToken() != '{') // eat ')'
+    return LogErrorS("Expect '{' before then block");
+  auto ThenBlock = ParseBlock();
+  if (!ThenBlock)
     return nullptr;
 
   if (CurTok != tok_else)
-    return std::make_unique<IfElseStmtAST>(std::move(Cond), std::move(If), nullptr);
-  getNextToken(); // eat 'else'
+    return std::make_unique<IfElseStmtAST>(std::move(Cond), std::move(ThenBlock), nullptr);
 
-  auto Else = ParseStatement();
-  return std::make_unique<IfElseStmtAST>(std::move(Cond), std::move(If), std::move(Else));
+  if (getNextToken() != '{') // eat 'else'
+    return LogErrorS("Expect '{' before else block");
+  auto ElseBlock = ParseBlock();
+  if (!ElseBlock)
+    return nullptr;
+
+  return std::make_unique<IfElseStmtAST>(std::move(Cond), std::move(ThenBlock), std::move(ElseBlock));
 }
+
 std::unique_ptr<StmtAST> ParseWhile()
 {
   if (getNextToken() != '(') // eat 'while'
@@ -212,9 +235,10 @@ std::unique_ptr<StmtAST> ParseWhile()
 
   if (CurTok != ')')
     return LogErrorS("Expect ')' after while condition");
-  getNextToken(); // eat ')'
 
-  auto Loop = ParseStatement();
+  if (getNextToken() != '{') // eat ')'
+    return LogErrorS("Expect '{' before loop block");
+  auto Loop = ParseBlock();
   if (!Loop)
     return nullptr;
 

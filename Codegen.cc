@@ -4,8 +4,30 @@
 #include "llvm/IR/Verifier.h"
 #include <map>
 #include <memory>
+#include <list>
 
-static std::map<std::string, AllocaInst *> NamedValues;
+/* Global flag indicates BlockAST::codegen() should copy args. */
+static bool IsFunctionBlock = false;
+
+static std::list<std::unique_ptr<std::map<std::string, AllocaInst *>>> VarScopes;
+static AllocaInst *findVar(std::string Name)
+{
+  for (auto &Scope : VarScopes)
+  {
+    if (Scope->find(Name) != Scope->end())
+      return (*Scope)[Name];
+  }
+  return nullptr;
+}
+
+static bool addVar(std::string Name, AllocaInst *Value)
+{
+  auto &Scope = VarScopes.front();
+  if (Scope->find(Name) != Scope->end())
+    return false;
+  (*Scope)[Name] = Value;
+  return true;
+}
 
 std::map<std::string, std::unique_ptr<PrototypeAST>> FunctionProtos;
 static Function *getFunction(std::string Name)
@@ -44,7 +66,7 @@ Value *NumberIntExprAST::codegen()
 
 Value *VariableExprAST::codegen()
 {
-  Value *Ptr = NamedValues[Name];
+  Value *Ptr = findVar(Name);
   if (!Ptr)
     return LogErrorV("Unknown variable name");
   return Builder->CreateLoad(Ptr, Name);
@@ -115,12 +137,9 @@ Value *CallExprAST::codegen()
 
 Value *DeclStmtAST::codegen()
 {
-  Value *Last;
+  AllocaInst *Last;
   for (auto &Name : Names)
   {
-    if (NamedValues[Name])
-      return LogErrorV("redeclare var");
-
     Type *Ty;
     if (ValType == type_int)
       Ty = Type::getInt32Ty(*TheContext);
@@ -128,51 +147,72 @@ Value *DeclStmtAST::codegen()
       Ty = Type::getDoubleTy(*TheContext);
     else
       return LogErrorV("unknown type");
-
-    Last = NamedValues[Name] = Builder->CreateAlloca(Ty, 0, Name);
+    Last = Builder->CreateAlloca(Ty, 0, Name);
+    if (!addVar(Name, Last))
+      return LogErrorV("redeclare var");
   }
   return Last;
 }
 
+static Value *castValue(Value *V, Type *DestTy)
+{
+  if (V->getType() != DestTy)
+  {
+    auto castOp = DestTy->isFloatingPointTy() ? Instruction::CastOps::UIToFP : Instruction::CastOps::FPToUI;
+    return Builder->CreateCast(castOp, V, DestTy);
+  }
+  return V;
+}
+
 Value *SimpStmtAST::codegen()
 {
-  Value *Ptr = NamedValues[Name];
+  auto Ptr = findVar(Name);
   if (!Ptr)
     return LogErrorV("undeclared var");
   Value *V = Expr->codegen();
-
-  bool isVarDouble = Ptr->getType()->isDoubleTy(),
-       isValDouble = V->getType()->isDoubleTy();
-  if (isVarDouble && !isValDouble)
-    V = Builder->CreateUIToFP(V, Type::getDoubleTy(*TheContext));
-  else if (!isVarDouble && isValDouble)
-    V = Builder->CreateFPToUI(V, Type::getInt32Ty(*TheContext));
-
+  V = castValue(V, Ptr->getAllocatedType());
   Builder->CreateStore(V, Ptr);
   return V;
 }
 
+Value *BlockAST::codegen()
+{
+  VarScopes.push_front(std::make_unique<std::map<std::string, AllocaInst *>>());
+  if (IsFunctionBlock)
+  {
+    auto TheFunction = Builder->GetInsertBlock()->getParent();
+    for (auto &Arg : TheFunction->args())
+    {
+      auto Ptr = Builder->CreateAlloca(Arg.getType(), 0, Arg.getName());
+      addVar(std::string(Arg.getName()), Ptr);
+      Builder->CreateStore(&Arg, Ptr);
+    }
+    IsFunctionBlock = false;
+  }
+
+  Value *Last;
+  for (auto &Stmt : Stmts)
+  {
+    if (!(Last = Stmt->codegen()))
+      return nullptr;
+  }
+
+  VarScopes.pop_front();
+  return Last;
+}
+
 Value *ReturnStmtAST::codegen()
 {
-  Value *RetVal = Expr->codegen();
-  auto TheFunction = Builder->GetInsertBlock()->getParent();
-  Type *RetProtoTy = TheFunction->getReturnType();
-  Type *RetValTy = RetVal->getType();
-
-  bool isProtoDouble = RetProtoTy->isDoubleTy(),
-       isValDouble = RetValTy->isDoubleTy();
-  if (isProtoDouble && !isValDouble)
-    RetVal = Builder->CreateUIToFP(RetVal, Type::getDoubleTy(*TheContext));
-  else if (!isProtoDouble && isValDouble)
-    RetVal = Builder->CreateFPToUI(RetVal, Type::getInt32Ty(*TheContext));
+  auto RetVal = Expr->codegen();
+  RetVal = castValue(RetVal, Builder->GetInsertBlock()->getParent()->getReturnType());
 
   return Builder->CreateRet(RetVal);
 }
 
-Value *getBoolValue(Value *Val)
+static Value *getBoolValue(Value *Val)
 {
   auto Type = Val->getType();
-  if (Type->isDoubleTy())
+  if (Type->isFloatingPointTy())
     return Builder->CreateCmp(CmpInst::Predicate::FCMP_ONE, Val, ConstantFP::get(Type, 0.0));
   else if (Type->isIntegerTy())
     return Builder->CreateCmp(CmpInst::Predicate::ICMP_NE, Val, ConstantInt::get(Type, 0));
@@ -283,21 +323,11 @@ Function *FunctionAST::codegen()
   BasicBlock *BB = BasicBlock::Create(*TheContext, "entry", TheFunction);
   Builder->SetInsertPoint(BB);
 
-  NamedValues.clear();
-
-  for (auto &Arg : TheFunction->args())
+  IsFunctionBlock = true;
+  if (!Body->codegen())
   {
-    Value *Ptr = NamedValues[std::string(Arg.getName())] = Builder->CreateAlloca(Arg.getType(), 0, Arg.getName());
-    Builder->CreateStore(&Arg, Ptr);
-  }
-
-  for (auto &Stmt : Body)
-  {
-    if (!Stmt->codegen())
-    {
-      TheFunction->eraseFromParent();
-      return nullptr;
-    }
+    TheFunction->eraseFromParent();
+    return nullptr;
   }
 
   verifyFunction(*TheFunction);

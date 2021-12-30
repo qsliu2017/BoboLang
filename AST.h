@@ -193,16 +193,38 @@ public:
 #endif
 };
 
+class BlockAST : public StmtAST
+{
+  std::vector<std::unique_ptr<StmtAST>> Stmts;
+
+public:
+  BlockAST(std::vector<std::unique_ptr<StmtAST>> Stmts)
+      : Stmts(std::move(Stmts)) {}
+
+#ifdef AST_CODEGEN
+  Value *codegen() override;
+#endif
+#ifdef AST_OUTPUT
+  void output() override
+  {
+    std::cout << "{" << std::endl;
+    for (auto &Stmt : Stmts)
+      Stmt->output();
+    std::cout << "}" << std::endl;
+  }
+#endif
+};
+
 class IfElseStmtAST : public StmtAST
 {
   std::unique_ptr<ExprAST> Cond;
-  std::unique_ptr<StmtAST> Then;
-  std::unique_ptr<StmtAST> Else;
+  std::unique_ptr<BlockAST> Then;
+  std::unique_ptr<BlockAST> Else;
 
 public:
   IfElseStmtAST(std::unique_ptr<ExprAST> Cond,
-                std::unique_ptr<StmtAST> Then,
-                std::unique_ptr<StmtAST> Else)
+                std::unique_ptr<BlockAST> Then,
+                std::unique_ptr<BlockAST> Else)
       : Cond(std::move(Cond)), Then(std::move(Then)), Else(std::move(Else)) {}
 
 #ifdef AST_CODEGEN
@@ -230,10 +252,10 @@ public:
 class WhileStmtAST : public StmtAST
 {
   std::unique_ptr<ExprAST> Cond;
-  std::unique_ptr<StmtAST> Loop;
+  std::unique_ptr<BlockAST> Loop;
 
 public:
-  WhileStmtAST(std::unique_ptr<ExprAST> Cond, std::unique_ptr<StmtAST> Loop)
+  WhileStmtAST(std::unique_ptr<ExprAST> Cond, std::unique_ptr<BlockAST> Loop)
       : Cond(std::move(Cond)), Loop(std::move(Loop)) {}
 
 #ifdef AST_CODEGEN
@@ -298,11 +320,11 @@ public:
 class FunctionAST
 {
   std::unique_ptr<PrototypeAST> Proto;
-  std::vector<std::unique_ptr<StmtAST>> Body;
+  std::unique_ptr<BlockAST> Body;
 
 public:
   FunctionAST(std::unique_ptr<PrototypeAST> Proto,
-              std::vector<std::unique_ptr<StmtAST>> Body)
+              std::unique_ptr<BlockAST> Body)
       : Proto(std::move(Proto)), Body(std::move(Body)) {}
 #ifdef AST_CODEGEN
   Function *codegen();
@@ -311,10 +333,7 @@ public:
   void output()
   {
     Proto->output();
-    std::cout << "{" << std::endl;
-    for (auto &Stmt : Body)
-      Stmt->output();
-    std::cout << "}" << std::endl;
+    Body->output();
   }
 #endif
 };

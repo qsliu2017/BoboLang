@@ -6,6 +6,8 @@ std::unique_ptr<PrototypeAST> ParseExternFunctionDeclaration();
 std::unique_ptr<FunctionAST> ParseFunctionDefinition();
 std::unique_ptr<PrototypeAST> ParsePrototype();
 
+std::unique_ptr<BlockAST> ParseBlock();
+
 std::unique_ptr<StmtAST> ParseStatement();
 std::unique_ptr<StmtAST> ParseVarDeclaration();
 std::unique_ptr<StmtAST> ParseSimpleAssignment();

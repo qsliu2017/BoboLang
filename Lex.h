@@ -20,7 +20,9 @@ enum Token
 enum Types
 {
 	type_int = 1,
-	type_double = 2
+	type_double = 2,
+	type_intptr = 3,
+	type_doubleptr = 4,
 };
 
 union NumVal

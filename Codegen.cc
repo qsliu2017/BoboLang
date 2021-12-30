@@ -9,10 +9,15 @@
 /* Global flag indicates BlockAST::codegen() should copy args. */
 static bool IsFunctionBlock = false;
 
-static std::list<std::unique_ptr<std::map<std::string, AllocaInst *>>> VarScopes;
-static AllocaInst *findVar(std::string Name)
+/* Variables of scope stack */
+static std::list<std::unique_ptr<std::map<std::string, Value *>>> NamedValuesScope;
+
+/* Variables on heap, GC heaper */
+static std::list<std::unique_ptr<std::map<std::string, Value *>>> HeapValuesScope;
+
+static Value *findVar(std::string Name)
 {
-  for (auto &Scope : VarScopes)
+  for (auto &Scope : NamedValuesScope)
   {
     if (Scope->find(Name) != Scope->end())
       return (*Scope)[Name];
@@ -20,12 +25,15 @@ static AllocaInst *findVar(std::string Name)
   return nullptr;
 }
 
-static bool addVar(std::string Name, AllocaInst *Value)
+static bool addVar(std::string Name, Value *Value, bool onHeap = false)
 {
-  auto &Scope = VarScopes.front();
+  auto &Scope = NamedValuesScope.front();
   if (Scope->find(Name) != Scope->end())
     return false;
+
   (*Scope)[Name] = Value;
+  if (onHeap)
+    (*HeapValuesScope.front())[Name] = Value;
   return true;
 }
 
@@ -54,22 +62,63 @@ static Function *LogErrorF(const char *Str)
   return nullptr;
 }
 
+static Type *lowestCommonType(Type *Ty1, Type *Ty2)
+{
+  if (Ty1->isPointerTy())
+    Ty1 = Ty1->getPointerElementType();
+  if (Ty2->isPointerTy())
+    Ty2 = Ty1->getPointerElementType();
+  return (Ty1 == FPType || Ty2 == FPType) ? FPType : IntType;
+}
+
+static Value *getPointerElement(Value *Ptr)
+{
+  auto Type = Ptr->getType();
+  if (Type->isPointerTy())
+  {
+    auto ElType = Type->getPointerElementType();
+    return Builder->CreateLoad(ElType, Ptr);
+  }
+  return Ptr;
+}
+
+static Value *castValue(Value *V, Type *DestTy)
+{
+  auto Ty = V->getType();
+  if (DestTy->isPointerTy())
+  {
+    if (!Ty->isPointerTy())
+      return LogErrorV("cannot cast non-pointer to pointer");
+    else if (Ty->getPointerElementType() != DestTy->getPointerElementType())
+      return LogErrorV("cannot cast pointer to different type");
+    else
+      return V;
+  }
+
+  V = getPointerElement(V);
+  if (Ty != DestTy)
+  {
+    auto castOp = DestTy->isFloatingPointTy() ? Instruction::CastOps::UIToFP : Instruction::CastOps::FPToUI;
+    return Builder->CreateCast(castOp, V, DestTy);
+  }
+  return V;
+}
+
 Value *NumberDoubleExprAST::codegen()
 {
-  return ConstantFP::get(*TheContext, APFloat(Val));
+  return ConstantFP::get(FPType, Val);
 }
 
 Value *NumberIntExprAST::codegen()
 {
-  return ConstantInt::get(*TheContext, APInt(32, Val));
+  return ConstantInt::get(IntType, Val);
 }
 
 Value *VariableExprAST::codegen()
 {
-  Value *Ptr = findVar(Name);
-  if (!Ptr)
-    return LogErrorV("Unknown variable name");
-  return Builder->CreateLoad(Ptr, Name);
+  if (auto Ptr = findVar(Name))
+    return Ptr;
+  return LogErrorV("Unknown variable name");
 }
 
 Value *BinaryExprAST::codegen()
@@ -78,15 +127,12 @@ Value *BinaryExprAST::codegen()
   if (!L || !R)
     return nullptr;
 
-  bool isLeftDoubleTy = L->getType()->isDoubleTy(),
-       isRightDoubleTy = R->getType()->isDoubleTy();
-  if (isLeftDoubleTy || isRightDoubleTy)
-  {
-    if (!isLeftDoubleTy)
-      L = Builder->CreateUIToFP(L, Type::getDoubleTy(*TheContext));
-    if (!isRightDoubleTy)
-      R = Builder->CreateUIToFP(R, Type::getDoubleTy(*TheContext));
+  auto Ty = lowestCommonType(L->getType(), R->getType());
+  L = castValue(L, Ty);
+  R = castValue(R, Ty);
 
+  if (Ty == FPType)
+  {
     switch (Op)
     {
     case '+':
@@ -128,7 +174,9 @@ Value *CallExprAST::codegen()
   std::vector<Value *> ArgsValue;
   for (int i = 0, e = Args.size(); i < e; i++)
   {
-    ArgsValue.push_back(Args[i]->codegen());
+    auto ArgTy = CalleeF->getArg(i)->getType();
+    auto ArgVal = Args[i]->codegen();
+    ArgsValue.push_back(castValue(ArgVal, ArgTy));
     if (!ArgsValue.back())
       return nullptr;
   }
@@ -137,31 +185,45 @@ Value *CallExprAST::codegen()
 
 Value *DeclStmtAST::codegen()
 {
-  AllocaInst *Last;
+  Instruction *Last;
   for (auto &Name : Names)
   {
-    Type *Ty;
-    if (ValType == type_int)
-      Ty = Type::getInt32Ty(*TheContext);
-    else if (ValType == type_double)
-      Ty = Type::getDoubleTy(*TheContext);
-    else
+    Type *Ty, *PtrTy;
+    switch (ValType)
+    {
+    case type_int:
+      Ty = IntType;
+      goto DeclStackVar;
+    case type_double:
+      Ty = FPType;
+    DeclStackVar:
+      Last = Builder->CreateAlloca(Ty, 0, Name);
+      if (!addVar(Name, Last))
+        return LogErrorV("redeclare var");
+      break;
+
+    case type_intptr:
+      Ty = IntType;
+      PtrTy = IntPtrType;
+      goto DeclHeapVar;
+    case type_doubleptr:
+      Ty = FPType;
+      PtrTy = FPPtrType;
+    DeclHeapVar:
+      Last = CallInst::CreateMalloc(Builder->GetInsertBlock(),
+                                    PtrTy,
+                                    Ty,
+                                    ConstantExpr::getSizeOf(Ty), nullptr, nullptr);
+      Builder->GetInsertBlock()->getInstList().push_back(Last);
+      if (!addVar(Name, Last, true))
+        return LogErrorV("redeclare var");
+      break;
+
+    default:
       return LogErrorV("unknown type");
-    Last = Builder->CreateAlloca(Ty, 0, Name);
-    if (!addVar(Name, Last))
-      return LogErrorV("redeclare var");
+    }
   }
   return Last;
-}
-
-static Value *castValue(Value *V, Type *DestTy)
-{
-  if (V->getType() != DestTy)
-  {
-    auto castOp = DestTy->isFloatingPointTy() ? Instruction::CastOps::UIToFP : Instruction::CastOps::FPToUI;
-    return Builder->CreateCast(castOp, V, DestTy);
-  }
-  return V;
 }
 
 Value *SimpStmtAST::codegen()
@@ -170,22 +232,29 @@ Value *SimpStmtAST::codegen()
   if (!Ptr)
     return LogErrorV("undeclared var");
   Value *V = Expr->codegen();
-  V = castValue(V, Ptr->getAllocatedType());
+  V = castValue(V, Ptr->getType()->getPointerElementType());
   Builder->CreateStore(V, Ptr);
   return V;
 }
 
 Value *BlockAST::codegen()
 {
-  VarScopes.push_front(std::make_unique<std::map<std::string, AllocaInst *>>());
+  NamedValuesScope.push_front(std::make_unique<std::map<std::string, Value *>>());
+  HeapValuesScope.push_front(std::make_unique<std::map<std::string, Value *>>());
   if (IsFunctionBlock)
   {
     auto TheFunction = Builder->GetInsertBlock()->getParent();
     for (auto &Arg : TheFunction->args())
     {
-      auto Ptr = Builder->CreateAlloca(Arg.getType(), 0, Arg.getName());
-      addVar(std::string(Arg.getName()), Ptr);
-      Builder->CreateStore(&Arg, Ptr);
+      auto ArgTy = Arg.getType();
+      if (ArgTy->isPointerTy())
+        addVar(std::string(Arg.getName()), &Arg);
+      else
+      {
+        auto Ptr = Builder->CreateAlloca(ArgTy, 0, Arg.getName());
+        addVar(std::string(Arg.getName()), Ptr);
+        Builder->CreateStore(&Arg, Ptr);
+      }
     }
     IsFunctionBlock = false;
   }
@@ -197,15 +266,34 @@ Value *BlockAST::codegen()
       return nullptr;
   }
 
-  VarScopes.pop_front();
+  NamedValuesScope.pop_front();
+  auto BB = Builder->GetInsertBlock();
+  if (!isa<ReturnInst>(BB->getInstList().back()))
+  {
+    for (auto &Var : *HeapValuesScope.front())
+    {
+      auto GC = CallInst::CreateFree(Var.second, BB);
+      BB->getInstList().push_back(GC);
+    }
+  }
+  HeapValuesScope.pop_front();
   return Last;
 }
 
 Value *ReturnStmtAST::codegen()
 {
   auto RetVal = Expr->codegen();
-  RetVal = castValue(RetVal, Builder->GetInsertBlock()->getParent()->getReturnType());
-
+  auto BB = Builder->GetInsertBlock();
+  auto RetTy = BB->getParent()->getReturnType();
+  RetVal = castValue(RetVal, BB->getParent()->getReturnType());
+  auto &Scope = HeapValuesScope.front();
+  for (auto &Pair : *Scope)
+  {
+    if (RetTy->isPointerTy() && Pair.second == RetVal)
+      continue;
+    else
+      BB->getInstList().push_back(CallInst::CreateFree(Pair.second, BB));
+  }
   return Builder->CreateRet(RetVal);
 }
 
@@ -284,22 +372,44 @@ Value *WhileStmtAST::codegen()
 Function *PrototypeAST::codegen()
 {
   Type *ResultTy;
-  if (FnType == type_int)
-    ResultTy = Type::getInt32Ty(*TheContext);
-  else if (FnType == type_double)
-    ResultTy = Type::getDoubleTy(*TheContext);
-  else
+  switch (FnType)
+  {
+  case type_int:
+    ResultTy = IntType;
+    break;
+  case type_double:
+    ResultTy = FPType;
+    break;
+  case type_intptr:
+    ResultTy = IntPtrType;
+    break;
+  case type_doubleptr:
+    ResultTy = FPPtrType;
+    break;
+  default:
     return LogErrorF("unknown return type");
+  }
 
   std::vector<Type *> ArgsTy;
   for (int i = 0, e = Args.size(); i < e; i++)
   {
-    if (ArgTypes[i] == type_int)
-      ArgsTy.push_back(Type::getInt32Ty(*TheContext));
-    else if (ArgTypes[i] == type_double)
-      ArgsTy.push_back(Type::getDoubleTy(*TheContext));
-    else
+    switch (ArgTypes[i])
+    {
+    case type_int:
+      ArgsTy.push_back(IntType);
+      break;
+    case type_double:
+      ArgsTy.push_back(FPType);
+      break;
+    case type_intptr:
+      ArgsTy.push_back(IntPtrType);
+      break;
+    case type_doubleptr:
+      ArgsTy.push_back(FPPtrType);
+      break;
+    default:
       return LogErrorF("unknown arg type");
+    }
   }
 
   FunctionType *FT = FunctionType::get(ResultTy, ArgsTy, false);

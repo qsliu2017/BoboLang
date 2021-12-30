@@ -13,6 +13,10 @@
 std::unique_ptr<LLVMContext> TheContext;
 std::unique_ptr<Module> TheModule;
 std::unique_ptr<IRBuilder<>> Builder;
+Type *FPType;
+IntegerType *IntType;
+PointerType *FPPtrType;
+PointerType *IntPtrType;
 
 static void InitializeModuleAndPassManager()
 {
@@ -22,6 +26,11 @@ static void InitializeModuleAndPassManager()
 
 	// Create a new builder for the module.
 	Builder = std::make_unique<IRBuilder<>>(*TheContext);
+
+	FPType = Builder->getDoubleTy();
+	FPPtrType = PointerType::get(FPType, 1 << 24);
+	IntType = Builder->getInt64Ty();
+	IntPtrType = PointerType::get(IntType, 1 << 24);
 }
 
 static void HandleDefinition()
@@ -135,7 +144,7 @@ int main(int argc, char *argv[])
 	TargetOptions opt;
 	auto RM = Optional<Reloc::Model>();
 	auto TheTargetMachine =
-	    Target->createTargetMachine(TargetTriple, CPU, Features, opt, RM);
+			Target->createTargetMachine(TargetTriple, CPU, Features, opt, RM);
 	TheModule->setDataLayout(TheTargetMachine->createDataLayout());
 
 	auto Filename = "output.o";

@@ -1,5 +1,30 @@
-int foo(int a, double b){
-	int c;
-	c = a + b;
-	return c;
+int increaseintptr(intptr a){
+	a = a + 1;
+	return a;
+}
+
+int increaseint(int a){
+	a = a + 1;
+	return a;
+}
+
+intptr createone(){
+	intptr a;
+	a = 1;
+	return a;
+}
+
+int create1(){
+	intptr a;
+	a = 1;
+	return a;
+}
+
+int foo(){
+	intptr a;
+	a = 1;
+	int b;
+	b = increaseintptr(a);
+	b = increaseint(a);
+	return a;
 }

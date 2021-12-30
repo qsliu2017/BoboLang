@@ -9,11 +9,15 @@ Types ValType;
 static std::map<std::string, Types> TypeValues{
     {"int", type_int},
     {"double", type_double},
+    {"intptr", type_intptr},
+    {"doubleptr", type_doubleptr},
 };
 
 static std::map<std::string, Token> ReservedValues{
     {"int", tok_def},
     {"double", tok_def},
+    {"intptr", tok_def},
+    {"doubleptr", tok_def},
     {"extern", tok_extern},
     {"return", tok_return},
     {"if", tok_if},

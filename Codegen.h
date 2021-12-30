@@ -10,5 +10,10 @@ extern std::unique_ptr<Module> TheModule;
 extern std::unique_ptr<IRBuilder<>> Builder;
 extern std::map<std::string, std::unique_ptr<PrototypeAST>> FunctionProtos;
 
+extern Type *FPType;
+extern IntegerType *IntType;
+extern PointerType *FPPtrType;
+extern PointerType *IntPtrType;
+
 #undef AST_CODEGEN
 #endif

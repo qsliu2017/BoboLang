@@ -180,7 +180,17 @@ Value *CallExprAST::codegen()
     if (!ArgsValue.back())
       return nullptr;
   }
-  return Builder->CreateCall(CalleeF, ArgsValue);
+
+  auto Call = Builder->CreateCall(CalleeF, ArgsValue);
+  if (CalleeF->getReturnType()->isPointerTy())
+  {
+    auto &Scope = HeapValuesScope.front();
+    auto sz = Scope->size();
+    std::string Unnamed = std::string("_").append(itostr(sz));
+    (*Scope)[Unnamed] = Call;
+  }
+
+  return Call;
 }
 
 Value *DeclStmtAST::codegen()
